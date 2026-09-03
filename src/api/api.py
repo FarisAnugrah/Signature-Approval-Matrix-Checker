@@ -1,4 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 import cv2
 import numpy as np
 import pytesseract
@@ -10,7 +11,7 @@ import os
 from pypdf import PdfReader
 
 app = FastAPI(title="Signature Checker API")
-from fastapi.middleware.cors import CORSMiddleware
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -60,6 +61,16 @@ def analyze_document(pdf_path, doc_type):
             
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 15, 5)
+        
+        # FIX: Remove table lines so they don't count as ink
+        horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (40, 1))
+        detect_horizontal = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, horizontal_kernel, iterations=2)
+        vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 40))
+        detect_vertical = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, vertical_kernel, iterations=2)
+        
+        ink_thresh = thresh - detect_horizontal - detect_vertical
+        ink_thresh[ink_thresh < 0] = 0
+
         d = pytesseract.image_to_data(gray, config='--oem 3 --psm 11', output_type=pytesseract.Output.DICT)
         
         words = [{"text": d['text'][i].strip(), "norm": normalize_text(d['text'][i].strip()), 
@@ -85,11 +96,14 @@ def analyze_document(pdf_path, doc_type):
                     roi_h = (y_max - y_min) * config.get("roi_offset", {}).get("height_multiplier", 4)
                     roi_y, roi_x, roi_w = max(0, int(y_min - roi_h)), max(0, x_min - 20), (x_max - x_min) + 40
                     
-                    roi_ink = thresh[roi_y:y_max+20, roi_x:roi_x+roi_w]
+                    # FIX: Crop only the space ABOVE the text, use ink_thresh (without tables)
+                    roi_ink = ink_thresh[roi_y:max(0, y_min - 5), roi_x:roi_x+roi_w]
+                    
                     if roi_ink.size > 0:
                         ink_ratio = cv2.countNonZero(roi_ink) / roi_ink.size
                         results[role]["ink"] = ink_ratio
-                        if ink_ratio > 0.025: results[role]["signed"] = True
+                        # FIX: Adjusted threshold since table lines & text are removed
+                        if ink_ratio > 0.015: results[role]["signed"] = True
                     break
     return results
 
