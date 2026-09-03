@@ -53,6 +53,18 @@ def classify_document(pdf_path, templates):
     except: pass
     return None
 
+# --- VISION MODEL (YOLO) STUB ---
+# from ultralytics import YOLO
+# yolo_model = YOLO("models/signature_best.pt")
+
+def detect_signature_with_ai(roi_img):
+    """
+    YOLO implementation stub. 
+    Pass the cropped image here. If YOLO finds a bounding box class=signature, return True.
+    """
+    # results = yolo_model(roi_img, conf=0.6)
+    # return len(results[0].boxes) > 0
+    return Falsen
 def analyze_document(pdf_path, doc_type, templates):
     config = templates[doc_type]
     roles_to_find = config["roles"]
@@ -112,6 +124,11 @@ def analyze_document(pdf_path, doc_type, templates):
                     
                     if roi_ink.size > 0:
                         ink_ratio = cv2.countNonZero(roi_ink) / roi_ink.size
+                        
+                        # HYBRID CHECK: Try YOLO first, fallback to OpenCV Ink Density
+                        yolo_detected = detect_signature_with_ai(roi_ink)
+                        if yolo_detected or ink_ratio > 0.015:
+                            results[role]["signed"] = True
                         results[role]["ink"] = ink_ratio
                         if ink_ratio > 0.015: results[role]["signed"] = True
                     break
