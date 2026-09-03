@@ -1,5 +1,6 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import cv2
 import numpy as np
 import pytesseract
@@ -8,6 +9,8 @@ import json
 import re
 import tempfile
 import os
+import uuid
+from typing import Dict, Any
 from pypdf import PdfReader
 
 app = FastAPI(title="Signature Checker API")
@@ -20,13 +23,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-with open("config/templates.json") as f:
-    templates = json.load(f)
+CONFIG_PATH = "config/templates.json"
+
+def load_templates():
+    with open(CONFIG_PATH, "r") as f:
+        return json.load(f)
+
+def save_templates(data):
+    with open(CONFIG_PATH, "w") as f:
+        json.dump(data, f, indent=2)
+
+# In-memory job store for PoC (In production, use Redis/Postgres)
+jobs: Dict[str, Any] = {}
 
 def normalize_text(text):
     return re.sub(r'[^a-z0-9]', '', text.lower())
 
-def classify_document(pdf_path):
+def classify_document(pdf_path, templates):
     try:
         images = convert_from_path(pdf_path, first_page=1, last_page=1)
         img = cv2.cvtColor(np.array(images[0]), cv2.COLOR_RGB2BGR)
@@ -40,7 +53,7 @@ def classify_document(pdf_path):
     except: pass
     return None
 
-def analyze_document(pdf_path, doc_type):
+def analyze_document(pdf_path, doc_type, templates):
     config = templates[doc_type]
     roles_to_find = config["roles"]
     results = {role: {"found": False, "signed": False, "ink": 0.0} for role in roles_to_find}
@@ -62,7 +75,6 @@ def analyze_document(pdf_path, doc_type):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 15, 5)
         
-        # FIX: Remove table lines so they don't count as ink
         horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (40, 1))
         detect_horizontal = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, horizontal_kernel, iterations=2)
         vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 40))
@@ -96,45 +108,89 @@ def analyze_document(pdf_path, doc_type):
                     roi_h = (y_max - y_min) * config.get("roi_offset", {}).get("height_multiplier", 4)
                     roi_y, roi_x, roi_w = max(0, int(y_min - roi_h)), max(0, x_min - 20), (x_max - x_min) + 40
                     
-                    # FIX: Crop only the space ABOVE the text, use ink_thresh (without tables)
                     roi_ink = ink_thresh[roi_y:max(0, y_min - 5), roi_x:roi_x+roi_w]
                     
                     if roi_ink.size > 0:
                         ink_ratio = cv2.countNonZero(roi_ink) / roi_ink.size
                         results[role]["ink"] = ink_ratio
-                        # FIX: Adjusted threshold since table lines & text are removed
                         if ink_ratio > 0.015: results[role]["signed"] = True
                     break
     return results
 
-@app.post("/verify")
-async def verify_signature(file: UploadFile = File(...)):
-    if not file.filename.endswith('.pdf'):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported")
-        
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        tmp.write(await file.read())
-        tmp_path = tmp.name
-        
+
+def process_document_job(job_id: str, file_path: str):
+    """Background task to process PDF without blocking the API"""
+    jobs[job_id]["status"] = "processing"
     try:
-        doc_type = classify_document(tmp_path)
+        templates = load_templates()
+        doc_type = classify_document(file_path, templates)
+        
         if not doc_type:
-            return {"error": "Could not classify document type (not BRD/PCR)"}
+            jobs[job_id]["status"] = "failed"
+            jobs[job_id]["error"] = "Could not classify document type (not BRD/PCR)"
+            return
             
-        results = analyze_document(tmp_path, doc_type)
+        results = analyze_document(file_path, doc_type, templates)
         
         missing = [role for role, data in results.items() if not data["signed"]]
         is_approved = len(missing) == 0
         
-        return {
+        jobs[job_id]["result"] = {
             "document_type": doc_type,
             "status": "APPROVED" if is_approved else "PENDING",
             "results": results,
             "jira_labels_to_add": [f"waiting-sign-off-{r.replace(' ', '-').lower()}" for r in missing] if not is_approved else []
         }
+        jobs[job_id]["status"] = "completed"
+    except Exception as e:
+        jobs[job_id]["status"] = "failed"
+        jobs[job_id]["error"] = str(e)
     finally:
-        os.unlink(tmp_path)
+        if os.path.exists(file_path):
+            os.unlink(file_path)
+
+# --- ROUTES ---
 
 @app.get("/")
 async def home():
     return {"message": "Signature Approval Matrix Checker API is running"}
+
+@app.post("/verify/async")
+async def verify_signature_async(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    """Uploads file and returns a Job ID immediately (Non-blocking)"""
+    if not file.filename.endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+        
+    job_id = str(uuid.uuid4())
+    
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        tmp.write(await file.read())
+        tmp_path = tmp.name
+        
+    jobs[job_id] = {"status": "pending", "result": None, "error": None}
+    
+    # Start processing in background
+    background_tasks.add_task(process_document_job, job_id, tmp_path)
+    
+    return {"job_id": job_id, "status": "pending", "message": "Document is being processed"}
+
+@app.get("/verify/{job_id}")
+async def get_job_status(job_id: str):
+    """Polling endpoint to check job status"""
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return jobs[job_id]
+
+@app.get("/api/templates")
+async def get_templates():
+    """Admin: Get current templates"""
+    return load_templates()
+
+@app.post("/api/templates")
+async def update_templates(data: dict):
+    """Admin: Update templates JSON"""
+    try:
+        save_templates(data)
+        return {"message": "Templates updated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

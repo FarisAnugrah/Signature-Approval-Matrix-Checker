@@ -60,12 +60,31 @@ export default function Home() {
 
     try {
       await new Promise(r => setTimeout(r, 1500)); // Fake delay for WOW factor
-      const res = await fetch("http://localhost:8001/verify", {
+      const res = await fetch("http://localhost:8001/verify/async", {
         method: "POST",
         body: formData,
       });
       
       const data = await res.json();
+      
+      if (data.job_id) {
+        // Start polling
+        let isDone = false;
+        while (!isDone) {
+          await new Promise(r => setTimeout(r, 2000)); // Poll every 2 seconds
+          const pollRes = await fetch(`http://localhost:8001/verify/${data.job_id}`);
+          const pollData = await pollRes.json();
+          
+          if (pollData.status === "completed") {
+            setResult(pollData.result);
+            isDone = true;
+          } else if (pollData.status === "failed") {
+            throw new Error(pollData.error);
+          }
+          // If pending/processing, keep looping
+        }
+        return;
+      }
       if (!res.ok) throw new Error(data.detail || data.error || "Verification failed");
       
       setResult(data);
