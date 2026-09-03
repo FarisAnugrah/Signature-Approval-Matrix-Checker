@@ -162,7 +162,7 @@ def analyze_document(pdf_path, doc_type, templates):
                     y_min, y_max = min(w["y"] for w in window), max(w["y"] + w["h"] for w in window)
                     x_min, x_max = min(w["x"] for w in window), max(w["x"] + w["w"] for w in window)
                     
-                    roi_h = (y_max - y_min) * config.get("roi_offset", {}).get("height_multiplier", 4)
+                    roi_h = (y_max - y_min) * config.get("roi_offset", {}).get("height_multiplier", 6)
                     roi_y, roi_x, roi_w = max(0, int(y_min - roi_h)), max(0, x_min - 20), (x_max - x_min) + 40
                     
                     # Original crop for OpenCV
