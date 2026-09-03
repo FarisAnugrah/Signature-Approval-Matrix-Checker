@@ -154,7 +154,7 @@ def analyze_document(pdf_path, doc_type, templates):
                 window = words[i:i+window_size]
                 match_count = sum(1 for j in range(window_size) if role_words_norm[j] in window[j]["norm"] or window[j]["norm"] in role_words_norm[j])
                 
-                required_matches = window_size - 1 if window_size > 2 else window_size
+                required_matches = max(1, window_size - 1)
                 if match_count >= required_matches:
                     results[role]["found"] = True
                     y_min, y_max = min(w["y"] for w in window), max(w["y"] + w["h"] for w in window)
