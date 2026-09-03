@@ -138,7 +138,9 @@ def analyze_document(pdf_path, doc_type, templates):
         ink_thresh = thresh - detect_horizontal - detect_vertical
         ink_thresh[ink_thresh < 0] = 0
 
-        d = pytesseract.image_to_data(gray, config='--oem 3 --psm 6', output_type=pytesseract.Output.DICT)
+                # Denoise d = pytesseract.image_to_data(gray, config brighten background to help OCR ignore pen strokes
+        gray_for_ocr = cv2.convertScaleAbs(gray, alpha=1.2, beta=30)
+        d = pytesseract.image_to_data(gray_for_ocr, config='--oem 3 --psm 11', output_type=pytesseract.Output.DICT)
         
         words = [{"text": d['text'][i].strip(), "norm": normalize_text(d['text'][i].strip()), 
                   "x": d['left'][i], "y": d['top'][i], "w": d['width'][i], "h": d['height'][i]} 
@@ -154,7 +156,7 @@ def analyze_document(pdf_path, doc_type, templates):
                 window = words[i:i+window_size]
                 match_count = sum(1 for j in range(window_size) if role_words_norm[j] in window[j]["norm"] or window[j]["norm"] in role_words_norm[j])
                 
-                required_matches = max(1, window_size - 1)
+                required_matches = window_size - 1 if window_size > 2 else window_size
                 if match_count >= required_matches:
                     results[role]["found"] = True
                     y_min, y_max = min(w["y"] for w in window), max(w["y"] + w["h"] for w in window)
