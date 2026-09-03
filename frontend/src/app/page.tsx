@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { UploadCloud, CheckCircle2, XCircle, Loader2, FileText, Tag, ShieldCheck, ChevronRight, FileCheck2, AlertCircle } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { UploadCloud, CheckCircle2, XCircle, Loader2, FileText, Tag, ShieldCheck, ChevronRight, FileCheck2, AlertCircle, ScanLine, Sparkles, Terminal } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function Home() {
@@ -33,7 +33,7 @@ export default function Home() {
         setResult(null);
         setError(null);
       } else {
-        setError("Please upload a PDF document.");
+        setError("Please upload a valid PDF document.");
       }
     }
   };
@@ -55,13 +55,16 @@ export default function Home() {
     formData.append("file", file);
 
     try {
+      // Fake delay for animation WOW factor
+      await new Promise(r => setTimeout(r, 1500)); 
+      
       const res = await fetch("http://localhost:8001/verify", {
         method: "POST",
         body: formData,
       });
       
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || data.error || "Failed to verify");
+      if (!res.ok) throw new Error(data.detail || data.error || "Verification failed");
       
       setResult(data);
     } catch (err: any) {
@@ -75,179 +78,262 @@ export default function Home() {
   const totalRoles = result ? Object.keys(result.results).length : 0;
   const signedRoles = result ? Object.values(result.results).filter((r: any) => r.signed).length : 0;
   const progress = totalRoles === 0 ? 0 : Math.round((signedRoles / totalRoles) * 100);
+  const isAllSigned = result?.status === 'APPROVED';
 
   return (
-    <main className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-100">
-      {/* Navbar */}
-      <nav className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between sticky top-0 z-10">
-        <div className="flex items-center gap-2">
-          <div className="bg-blue-600 p-1.5 rounded-lg">
-            <ShieldCheck className="w-5 h-5 text-white" />
+    <main className="min-h-screen bg-[#fafcff] text-slate-900 font-sans selection:bg-indigo-200 relative overflow-hidden">
+      {/* Decorative Background Elements */}
+      <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-indigo-50/80 to-transparent pointer-events-none" />
+      <div className="absolute -top-[20%] -right-[10%] w-[70%] h-[70%] rounded-full bg-blue-100/40 blur-3xl pointer-events-none" />
+      <div className="absolute top-[20%] -left-[10%] w-[50%] h-[50%] rounded-full bg-purple-100/40 blur-3xl pointer-events-none" />
+      
+      {/* Grid Pattern */}
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none mix-blend-multiply" />
+
+      {/* Navbar - Glassmorphism */}
+      <nav className="fixed w-full top-0 z-50 backdrop-blur-xl bg-white/60 border-b border-white/40 shadow-[0_4px_30px_rgba(0,0,0,0.03)]">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="bg-gradient-to-tr from-indigo-600 to-blue-500 p-2 rounded-xl shadow-lg shadow-indigo-200">
+              <ShieldCheck className="w-5 h-5 text-white" />
+            </div>
+            <span className="font-bold text-xl tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600">
+              SignMatrix
+            </span>
           </div>
-          <span className="font-bold text-lg tracking-tight">SignatureMatrix</span>
-        </div>
-        <div className="text-sm font-medium text-slate-500">
-          Internal Verification Tool
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900 text-white text-xs font-semibold shadow-md">
+            <Sparkles className="w-3.5 h-3.5 text-yellow-300" /> AI Powered
+          </div>
         </div>
       </nav>
 
-      <div className="max-w-5xl mx-auto px-6 py-12 space-y-12">
+      <div className="max-w-6xl mx-auto px-6 pt-32 pb-20 relative z-10">
         {/* Hero Section */}
-        <div className="text-center space-y-4 max-w-2xl mx-auto">
-          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-slate-900">
-            Verify Signatures with <span className="text-blue-600">Confidence</span>
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center space-y-6 max-w-3xl mx-auto mb-16"
+        >
+          <h1 className="text-5xl md:text-6xl font-extrabold tracking-tight text-slate-900 leading-[1.1]">
+            Automate Signature <br/>
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 via-blue-600 to-cyan-500">
+              Compliance Checks
+            </span>
           </h1>
-          <p className="text-lg text-slate-500">
-            Instantly validate physical and digital signatures on your BRD and PCR documents against the official Approval Matrix.
+          <p className="text-lg md:text-xl text-slate-500 leading-relaxed max-w-2xl mx-auto">
+            Upload your BRD or PCR. Our AI vision engine instantly validates physical and digital signatures against your approval matrix.
           </p>
-        </div>
+        </motion.div>
 
         {/* Main Content Grid */}
-        <div className={`grid gap-8 ${result ? 'md:grid-cols-12' : 'max-w-3xl mx-auto'}`}>
+        <div className={`grid gap-8 transition-all duration-700 ease-in-out ${result ? 'lg:grid-cols-12' : 'max-w-3xl mx-auto'}`}>
           
           {/* Left Column: Upload */}
-          <div className={`${result ? 'md:col-span-5' : 'col-span-full'}`}>
-            <div className="bg-white p-2 rounded-3xl shadow-sm border border-slate-200/60">
+          <motion.div 
+            layout
+            className={`${result ? 'lg:col-span-5' : 'col-span-full'}`}
+          >
+            <div className="bg-white/80 backdrop-blur-xl p-3 rounded-[2rem] shadow-[0_8px_40px_-12px_rgba(0,0,0,0.1)] border border-white/60 relative overflow-hidden group">
+              {/* Animated Glow Border */}
+              <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 via-purple-500 to-blue-500 opacity-0 group-hover:opacity-10 transition-opacity duration-500" />
+              
               <div 
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
-                className={`relative flex flex-col items-center justify-center p-12 text-center rounded-2xl border-2 border-dashed transition-all duration-200 ease-in-out cursor-pointer min-h-[320px]
-                  ${isDragging ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200 bg-slate-50/50 hover:bg-slate-50 hover:border-blue-300'}
-                  ${file && !isDragging ? 'border-blue-200 bg-blue-50/30' : ''}
+                className={`relative flex flex-col items-center justify-center p-12 text-center rounded-[1.5rem] border-2 border-dashed transition-all duration-300 cursor-pointer min-h-[360px]
+                  ${isDragging ? 'border-indigo-500 bg-indigo-50/50 scale-[0.98]' : 'border-slate-200 bg-slate-50/50 hover:bg-slate-50/80 hover:border-indigo-300'}
+                  ${file && !isDragging ? 'border-indigo-200 bg-indigo-50/30' : ''}
                 `}
                 onClick={() => !loading && fileInputRef.current?.click()}
               >
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  accept=".pdf"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
+                <input type="file" ref={fileInputRef} accept=".pdf" onChange={handleFileChange} className="hidden" />
                 
-                {file ? (
-                  <div className="space-y-4">
-                    <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto">
-                      <FileCheck2 className="w-8 h-8" />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-slate-700 truncate max-w-[200px]">{file.name}</p>
-                      <p className="text-xs text-slate-500 mt-1">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                    </div>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); setFile(null); setResult(null); }}
-                      className="text-sm text-slate-400 hover:text-red-500 transition-colors"
+                <AnimatePresence mode="wait">
+                  {loading ? (
+                    <motion.div 
+                      key="loading"
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      className="flex flex-col items-center space-y-6"
                     >
-                      Remove file
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="w-16 h-16 bg-white shadow-sm border border-slate-100 text-blue-500 rounded-full flex items-center justify-center mx-auto">
-                      <UploadCloud className="w-8 h-8" />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-slate-700">Click to upload or drag & drop</p>
-                      <p className="text-sm text-slate-500 mt-1">PDF documents only (max 10MB)</p>
-                    </div>
-                  </div>
-                )}
+                      <div className="relative w-24 h-24">
+                        {/* Scanning Animation */}
+                        <div className="absolute inset-0 border-4 border-indigo-100 rounded-2xl" />
+                        <motion.div 
+                          animate={{ y: [0, 88, 0] }} 
+                          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                          className="absolute top-0 left-0 w-full h-1 bg-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.8)] z-10"
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center text-indigo-500">
+                          <ScanLine className="w-10 h-10" />
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-lg font-bold text-slate-800">Analyzing Document</p>
+                        <p className="text-sm text-slate-500 animate-pulse">Running vision models...</p>
+                      </div>
+                    </motion.div>
+                  ) : file ? (
+                    <motion.div 
+                      key="file"
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="flex flex-col items-center space-y-4"
+                    >
+                      <div className="w-20 h-20 bg-gradient-to-br from-indigo-100 to-blue-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto shadow-inner border border-white">
+                        <FileCheck2 className="w-10 h-10" />
+                      </div>
+                      <div>
+                        <p className="font-bold text-slate-800 text-lg truncate max-w-[250px]">{file.name}</p>
+                        <p className="text-sm text-slate-500 font-medium mt-1">{(file.size / 1024 / 1024).toFixed(2)} MB PDF</p>
+                      </div>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setFile(null); setResult(null); }}
+                        className="mt-2 text-sm font-semibold text-slate-400 hover:text-red-500 transition-colors px-4 py-1.5 rounded-full hover:bg-red-50"
+                      >
+                        Remove Document
+                      </button>
+                    </motion.div>
+                  ) : (
+                    <motion.div 
+                      key="empty"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="flex flex-col items-center space-y-5"
+                    >
+                      <div className="w-20 h-20 bg-white shadow-sm border border-slate-100 text-indigo-500 rounded-2xl flex items-center justify-center mx-auto group-hover:scale-110 transition-transform duration-500 ease-out">
+                        <UploadCloud className="w-10 h-10" />
+                      </div>
+                      <div>
+                        <p className="font-bold text-slate-800 text-xl">Upload PDF Document</p>
+                        <p className="text-slate-500 mt-2 font-medium">Drag & drop or click to browse</p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
 
-            {error && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-4 p-4 bg-red-50 text-red-700 rounded-2xl text-sm flex items-start gap-3 border border-red-100">
-                <AlertCircle className="w-5 h-5 shrink-0" />
-                <p>{error}</p>
-              </motion.div>
-            )}
+            <AnimatePresence>
+              {error && (
+                <motion.div 
+                  initial={{ opacity: 0, height: 0 }} 
+                  animate={{ opacity: 1, height: 'auto' }} 
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mt-4 p-4 bg-red-50/80 backdrop-blur-sm text-red-700 rounded-2xl text-sm flex items-start gap-3 border border-red-100 shadow-sm overflow-hidden"
+                >
+                  <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                  <p className="font-medium">{error}</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-            <div className="mt-6">
+            <motion.div layout className="mt-6">
               <button
                 onClick={handleUpload}
                 disabled={!file || loading}
-                className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400 text-white px-8 py-4 rounded-2xl font-semibold transition-all shadow-sm active:scale-[0.98]"
+                className="group relative w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-indigo-600 disabled:bg-slate-200 disabled:text-slate-400 text-white px-8 py-4 rounded-2xl font-bold text-lg transition-all duration-300 shadow-[0_8px_20px_-8px_rgba(0,0,0,0.3)] hover:shadow-[0_8px_25px_-8px_rgba(79,70,229,0.5)] active:scale-[0.98] overflow-hidden"
               >
-                {loading ? (
-                  <><Loader2 className="w-5 h-5 animate-spin" /> Analyzing Document...</>
-                ) : (
-                  <>Verify Signatures <ChevronRight className="w-5 h-5" /></>
-                )}
+                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out" />
+                <span className="relative z-10 flex items-center gap-2">
+                  {loading ? 'Processing...' : 'Run Verification'} 
+                  {!loading && <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />}
+                </span>
               </button>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
 
           {/* Right Column: Results */}
           <AnimatePresence>
             {result && (
               <motion.div 
-                initial={{ opacity: 0, x: 20 }} 
-                animate={{ opacity: 1, x: 0 }}
-                className="md:col-span-7 bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-200/60 overflow-hidden flex flex-col"
+                initial={{ opacity: 0, x: 20, scale: 0.95 }} 
+                animate={{ opacity: 1, x: 0, scale: 1 }}
+                transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                className="lg:col-span-7 bg-white/80 backdrop-blur-xl rounded-[2rem] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.1)] border border-white/60 overflow-hidden flex flex-col"
               >
                 {/* Result Header */}
-                <div className="p-8 border-b border-slate-100 bg-slate-50/50">
-                  <div className="flex items-start justify-between">
+                <div className="p-8 border-b border-slate-100 bg-gradient-to-br from-slate-50/50 to-white">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                     <div>
-                      <h2 className="text-2xl font-bold text-slate-900">Verification Report</h2>
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className="bg-white border border-slate-200 text-slate-600 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider">
+                      <h2 className="text-2xl font-extrabold text-slate-900">Verification Report</h2>
+                      <div className="flex items-center gap-3 mt-3">
+                        <span className="bg-indigo-50 border border-indigo-100 text-indigo-700 px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider shadow-sm">
                           {result.document_type}
                         </span>
-                        <span className="text-slate-400 text-sm">{file?.name}</span>
+                        <span className="text-slate-500 font-medium truncate max-w-[200px] sm:max-w-xs" title={file?.name}>{file?.name}</span>
                       </div>
                     </div>
-                    <div className={`px-4 py-2 rounded-full flex items-center gap-2 font-bold text-sm shadow-sm
-                      ${result.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
-                      {result.status === 'APPROVED' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-                      {result.status}
+                    
+                    {/* Status Badge */}
+                    <div className={`px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold text-sm shadow-sm border
+                      ${isAllSigned 
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-emerald-100/50' 
+                        : 'bg-amber-50 text-amber-700 border-amber-200 shadow-amber-100/50'}`}>
+                      {isAllSigned ? (
+                        <><ShieldCheck className="w-5 h-5" /> FULLY COMPLIANT</>
+                      ) : (
+                        <><AlertCircle className="w-5 h-5" /> ACTION REQUIRED</>
+                      )}
                     </div>
                   </div>
 
                   {/* Progress Bar */}
-                  <div className="mt-8">
-                    <div className="flex justify-between text-sm mb-2 font-medium">
-                      <span className="text-slate-600">Verification Progress</span>
-                      <span className={progress === 100 ? 'text-emerald-600' : 'text-amber-600'}>{signedRoles} / {totalRoles} Signed</span>
+                  <div className="mt-10">
+                    <div className="flex justify-between items-end mb-3">
+                      <div>
+                        <span className="block text-3xl font-extrabold text-slate-900">{progress}%</span>
+                        <span className="text-sm font-medium text-slate-500">Signatures collected</span>
+                      </div>
+                      <span className={`text-sm font-bold px-3 py-1 rounded-lg ${isAllSigned ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {signedRoles} of {totalRoles} Required
+                      </span>
                     </div>
-                    <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                    <div className="w-full bg-slate-100 rounded-full h-3 p-0.5 border border-slate-200/60 shadow-inner">
                       <motion.div 
                         initial={{ width: 0 }} 
                         animate={{ width: `${progress}%` }} 
-                        transition={{ duration: 1, ease: "easeOut" }}
-                        className={`h-2.5 rounded-full ${progress === 100 ? 'bg-emerald-500' : 'bg-amber-500'}`}
-                      ></motion.div>
+                        transition={{ duration: 1.2, type: "spring", bounce: 0.2 }}
+                        className={`h-full rounded-full relative overflow-hidden ${isAllSigned ? 'bg-gradient-to-r from-emerald-400 to-emerald-500' : 'bg-gradient-to-r from-amber-400 to-amber-500'}`}
+                      >
+                        <div className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(255,255,255,0.2)_50%,transparent_75%,transparent_100%)] bg-[length:20px_20px] animate-[shimmer_1s_linear_infinite]" />
+                      </motion.div>
                     </div>
                   </div>
                 </div>
 
                 {/* Matrix List */}
-                <div className="p-8 flex-1 overflow-y-auto">
-                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Approval Matrix Checklist</h3>
-                  <div className="space-y-3">
+                <div className="p-8 flex-1 bg-slate-50/30">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
+                    <FileText className="w-4 h-4" /> Checklist Details
+                  </h3>
+                  <div className="space-y-4">
                     {Object.entries(result.results).map(([role, data]: any, idx) => (
                       <motion.div 
-                        initial={{ opacity: 0, y: 10 }}
+                        initial={{ opacity: 0, y: 15 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: idx * 0.1 }}
+                        transition={{ delay: 0.1 + (idx * 0.08) }}
                         key={role} 
-                        className={`flex items-center justify-between p-4 rounded-xl border ${
-                          data.signed ? 'bg-white border-slate-200' : 'bg-amber-50/30 border-amber-100'
+                        className={`flex items-center justify-between p-5 rounded-2xl border shadow-sm transition-colors ${
+                          data.signed 
+                            ? 'bg-white border-slate-200 hover:border-emerald-200' 
+                            : 'bg-white border-amber-200/60 hover:border-amber-300'
                         }`}
                       >
-                        <span className="font-medium text-slate-700">{role}</span>
+                        <span className="font-semibold text-slate-800">{role}</span>
                         <div className="flex items-center">
                           {data.signed ? (
-                            <span className="flex items-center gap-1.5 text-emerald-600 text-sm font-semibold bg-emerald-50 px-3 py-1 rounded-full">
+                            <span className="flex items-center gap-1.5 text-emerald-600 text-sm font-bold bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100/50">
                               <CheckCircle2 className="w-4 h-4" /> Verified
                             </span>
                           ) : data.found ? (
-                            <span className="flex items-center gap-1.5 text-amber-600 text-sm font-semibold bg-amber-50 px-3 py-1 rounded-full">
-                              <Loader2 className="w-4 h-4" /> Pending
+                            <span className="flex items-center gap-1.5 text-amber-600 text-sm font-bold bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-100/50">
+                              <Loader2 className="w-4 h-4 animate-spin" /> Pending
                             </span>
                           ) : (
-                            <span className="flex items-center gap-1.5 text-slate-500 text-sm font-semibold bg-slate-100 px-3 py-1 rounded-full">
+                            <span className="flex items-center gap-1.5 text-slate-500 text-sm font-bold bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
                               <XCircle className="w-4 h-4" /> Not Found
                             </span>
                           )}
@@ -257,21 +343,48 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Jira Mockup */}
+                {/* Jira Mockup Terminal */}
                 {result.jira_labels_to_add && result.jira_labels_to_add.length > 0 && (
-                  <div className="p-6 bg-blue-50/50 border-t border-blue-100 m-4 mt-0 rounded-2xl">
-                    <div className="flex items-center gap-2 text-blue-900 font-semibold mb-2">
-                      <Tag className="w-4 h-4 text-blue-600" /> Automated Jira Action
+                  <motion.div 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.6 }}
+                    className="m-6 mt-0 p-5 bg-[#0f172a] rounded-2xl shadow-xl overflow-hidden relative"
+                  >
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500" />
+                    
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2 text-slate-300 font-mono text-sm font-medium">
+                        <Terminal className="w-4 h-4 text-blue-400" /> Jira Webhook Trigger
+                      </div>
+                      <div className="flex gap-1.5">
+                        <div className="w-2.5 h-2.5 rounded-full bg-slate-700" />
+                        <div className="w-2.5 h-2.5 rounded-full bg-slate-700" />
+                        <div className="w-2.5 h-2.5 rounded-full bg-slate-700" />
+                      </div>
                     </div>
-                    <p className="text-sm text-blue-700/80 mb-3">These labels will be synced to the Jira ticket to notify pending approvals:</p>
-                    <div className="flex flex-wrap gap-2">
-                      {result.jira_labels_to_add.map((label: string) => (
-                        <span key={label} className="bg-white border border-blue-200 text-blue-700 text-xs px-3 py-1.5 rounded-lg font-mono shadow-sm">
-                          {label}
-                        </span>
-                      ))}
+                    
+                    <div className="font-mono text-xs md:text-sm text-slate-400 space-y-2">
+                      <p><span className="text-pink-400">POST</span> <span className="text-slate-300">/rest/api/3/issue/UPDATE</span></p>
+                      <p className="text-slate-500">{"{"}</p>
+                      <div className="pl-4">
+                        <p>"update": {"{"}</p>
+                        <div className="pl-4">
+                          <p>"labels": [</p>
+                          <div className="pl-4 flex flex-wrap gap-2 py-1">
+                            {result.jira_labels_to_add.map((label: string, i: number) => (
+                              <span key={label} className="text-green-400 bg-green-400/10 px-1.5 rounded">
+                                "{label}"{i < result.jira_labels_to_add.length - 1 ? "," : ""}
+                              </span>
+                            ))}
+                          </div>
+                          <p>]</p>
+                        </div>
+                        <p>{"}"}</p>
+                      </div>
+                      <p className="text-slate-500">{"}"}</p>
                     </div>
-                  </div>
+                  </motion.div>
                 )}
               </motion.div>
             )}
