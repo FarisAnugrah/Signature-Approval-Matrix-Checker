@@ -1,0 +1,39 @@
+{
+  "BRD": {
+    "identifiers": [
+      "business requirement document",
+      "brd",
+      "sistem pengelolaan rekening"
+    ],
+    "approval_pages_from_end": 2, 
+    "roles": [
+      "Business Relationship Manager",
+      "IT Planning",
+      "ITPD Division Head",
+      "Head Of Planning Performance",
+      "Business User Division Head"
+    ],
+    "roi_offset": {
+      "direction": "above",
+      "height_multiplier": 4,
+      "width_margin": 20
+    }
+  },
+  "PCR": {
+    "identifiers": [
+      "project change request",
+      "pcr"
+    ],
+    "approval_pages_from_end": 1,
+    "roles": [
+      "System Analyst",
+      "Project Owner",
+      "Head Of Development"
+    ],
+    "roi_offset": {
+      "direction": "above",
+      "height_multiplier": 4,
+      "width_margin": 20
+    }
+  }
+}
