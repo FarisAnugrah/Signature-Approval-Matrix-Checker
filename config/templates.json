@@ -2,16 +2,17 @@
   "BRD": {
     "identifiers": [
       "business requirement document",
-      "brd",
-      "sistem pengelolaan rekening"
+      "brd"
     ],
-    "approval_pages_from_end": 2, 
+    "approval_pages_from_end": 2,
     "roles": [
       "Business Relationship Manager",
       "IT Planning",
       "ITPD Division Head",
       "Head Of Planning Performance",
-      "Business User Division Head"
+      "Business User Division Head",
+      "Business User Department Head",
+      "Business User"
     ],
     "roi_offset": {
       "direction": "above",
