@@ -176,7 +176,7 @@ def analyze_document(pdf_path, doc_type, templates):
                         # ENSEMBLE: Try YOLO on color image, fallback to OpenCV ink density
                         yolo_detected = detect_signature_with_ai(roi_color)
                         
-                        if yolo_detected or ink_ratio > 0.010:
+                        if yolo_detected or ink_ratio > 0.005:
                             results[role]["signed"] = True
                             if yolo_detected:
                                 logger.info(f"Role {role}: Verified via YOLO AI Model")
