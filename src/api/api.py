@@ -127,10 +127,9 @@ def analyze_document(pdf_path, doc_type, templates):
                         
                         # HYBRID CHECK: Try YOLO first, fallback to OpenCV Ink Density
                         yolo_detected = detect_signature_with_ai(roi_ink)
-                        if yolo_detected or ink_ratio > 0.015:
+                        if yolo_detected or ink_ratio > 0.010:
                             results[role]["signed"] = True
                         results[role]["ink"] = ink_ratio
-                        if ink_ratio > 0.015: results[role]["signed"] = True
                     break
     return results
 
