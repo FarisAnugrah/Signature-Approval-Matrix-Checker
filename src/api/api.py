@@ -82,6 +82,24 @@ def classify_document(pdf_path, templates):
         images = convert_from_path(pdf_path, first_page=1, last_page=1)
         img = cv2.cvtColor(np.array(images[0]), cv2.COLOR_RGB2BGR)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        # Gunakan PSM 3 untuk halaman utuh
+        text = pytesseract.image_to_string(gray, config="--psm 3").lower()
+        text_clean = re.sub(r"[^a-z0-9\s]", "", text)
+        
+        for doc_type, config in templates.items():
+            # Cek dari identifier yang lebih panjang/spesifik duluan
+            sorted_identifiers = sorted(config["identifiers"], key=len, reverse=True)
+            for identifier in sorted_identifiers:
+                if identifier.lower() in text_clean:
+                    return doc_type
+    except: pass
+    return None
+
+def old_classify_document
+    try:
+        images = convert_from_path(pdf_path, first_page=1, last_page=1)
+        img = cv2.cvtColor(np.array(images[0]), cv2.COLOR_RGB2BGR)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         text = pytesseract.image_to_string(gray).lower()
         
         for doc_type, config in templates.items():
