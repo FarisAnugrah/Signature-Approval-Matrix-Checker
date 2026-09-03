@@ -10,6 +10,14 @@ import os
 from pypdf import PdfReader
 
 app = FastAPI(title="Signature Checker API")
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 with open("config/templates.json") as f:
     templates = json.load(f)
