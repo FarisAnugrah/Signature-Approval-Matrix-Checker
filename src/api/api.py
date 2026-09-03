@@ -64,7 +64,7 @@ def detect_signature_with_ai(roi_img):
     """
     # results = yolo_model(roi_img, conf=0.6)
     # return len(results[0].boxes) > 0
-    return Falsen
+    return False
 def analyze_document(pdf_path, doc_type, templates):
     config = templates[doc_type]
     roles_to_find = config["roles"]
