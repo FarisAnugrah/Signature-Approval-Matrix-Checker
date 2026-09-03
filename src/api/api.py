@@ -95,7 +95,6 @@ def classify_document(pdf_path, templates):
     except: pass
     return None
 
-def old_classify_document
     try:
         images = convert_from_path(pdf_path, first_page=1, last_page=1)
         img = cv2.cvtColor(np.array(images[0]), cv2.COLOR_RGB2BGR)
