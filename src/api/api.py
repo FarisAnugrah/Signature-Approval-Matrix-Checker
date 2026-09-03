@@ -138,7 +138,7 @@ def analyze_document(pdf_path, doc_type, templates):
         ink_thresh = thresh - detect_horizontal - detect_vertical
         ink_thresh[ink_thresh < 0] = 0
 
-        d = pytesseract.image_to_data(gray, config='--oem 3 --psm 11', output_type=pytesseract.Output.DICT)
+        d = pytesseract.image_to_data(gray, config='--oem 3 --psm 6', output_type=pytesseract.Output.DICT)
         
         words = [{"text": d['text'][i].strip(), "norm": normalize_text(d['text'][i].strip()), 
                   "x": d['left'][i], "y": d['top'][i], "w": d['width'][i], "h": d['height'][i]} 
