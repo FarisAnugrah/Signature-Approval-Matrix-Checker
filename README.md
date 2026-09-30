@@ -23,3 +23,4 @@ uvicorn src.api.api:app --reload
 - **Phase 3**:
   - **Jira Integration**: Direct REST API syncing to automatically add `waiting-sign-off-<role>` labels.
   - **Vision Model Upgrades**: Finetune a YOLOv8 model for stamp/signature detection to handle low-quality/skewed scans better than standard OCR.
+Update timestamp: Wed Sep 30 23:39:02 WIB 2026
