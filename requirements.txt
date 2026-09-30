@@ -8,3 +8,5 @@ Pillow
 pytesseract
 pypdf
 ultralytics
+pytest
+httpx

@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 export default function Home() {
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<Record<string, any>[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [filter, setFilter] = useState<'all' | 'approved' | 'pending'>('all');

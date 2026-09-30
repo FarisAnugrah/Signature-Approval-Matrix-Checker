@@ -5,7 +5,7 @@ import { ShieldCheck, Database, PlusCircle, ArrowLeft, Save, Trash2, Edit2, Load
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function AdminPanel() {
-  const [templates, setTemplates] = useState<any>(null);
+  const [templates, setTemplates] = useState<Record<string, any> | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState(false);
