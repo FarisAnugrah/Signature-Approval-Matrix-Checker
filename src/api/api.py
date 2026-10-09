@@ -212,6 +212,7 @@ def process_document_job(job_id: str, file_path: str):
             "jira_labels_to_add": [f"waiting-sign-off-{r.replace(' ', '-').lower()}" for r in missing] if not is_approved else []
         }
         jobs[job_id]["status"] = "completed"
+        import threading; threading.Timer(3600, lambda: jobs.pop(job_id, None)).start()
     except Exception as e:
         jobs[job_id]["status"] = "failed"
         jobs[job_id]["error"] = str(e)
