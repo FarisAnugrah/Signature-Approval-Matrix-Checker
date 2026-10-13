@@ -7,7 +7,7 @@ import json
 with open("config/templates.json") as f:
     templates = json.load(f)
 
-def test_classify(pdf_path):
+def classify_sample(pdf_path):
     print(f"\nTesting: {pdf_path}")
     try:
         images = convert_from_path(pdf_path, first_page=1, last_page=1)
@@ -35,5 +35,6 @@ def test_classify(pdf_path):
         print("Error:", e)
     return None
 
-test_classify("data/samples/PCR - 2605022022A - SPRINT Full Sign (1) (1).pdf")
-test_classify("data/samples/BRD Aplikasi SPRINT (Sistem Pengelolaan Rekening Terintegrasi).pdf")
+if __name__ == "__main__":
+    classify_sample("data/samples/PCR - 2605022022A - SPRINT Full Sign (1) (1).pdf")
+    classify_sample("data/samples/BRD Aplikasi SPRINT (Sistem Pengelolaan Rekening Terintegrasi).pdf")

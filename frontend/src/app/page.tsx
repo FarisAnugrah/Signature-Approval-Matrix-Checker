@@ -3,10 +3,49 @@
 import { useState, useRef, useEffect } from "react";
 import { 
   UploadCloud, CheckCircle2, XCircle, Loader2, FileText, ShieldCheck, 
-  ChevronRight, AlertCircle, ScanLine, Sparkles, Terminal, Edit3, 
-  Filter, Check, ListChecks, Trash2, FolderTree, Mail, Send, ChevronDown, ChevronUp
+  ChevronRight, AlertCircle, ScanLine, Terminal, Edit3,
+  Check, ListChecks, Trash2, FolderTree, Mail
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+
+type RoleResult = {
+  found: boolean;
+  signed: boolean;
+  ink: number;
+  manual_override?: boolean;
+};
+
+type DocumentResult = { fileName: string } & (
+  | { error: string }
+  | {
+      document_type: string;
+      status: 'APPROVED' | 'PENDING';
+      results: Record<string, RoleResult>;
+      jira_labels_to_add: string[];
+    }
+);
+
+type SignatureAnalysis =
+  | { status: 'APPROVED' | 'PENDING'; missing_roles: string[] }
+  | { status: 'ERROR'; error: string }
+  | { status: 'UNRECOGNIZED_TEMPLATE' };
+
+type ZipResult = {
+  total_projects: number;
+  projects: Record<string, {
+    project_name: string;
+    completeness_score: string;
+    percent: number;
+    missing_signatures_count: number;
+    items: {
+      path: string;
+      status: 'Ditemukan' | 'Belum ditemukan';
+      files: string[];
+      requires_signature: boolean;
+      signature_analysis: SignatureAnalysis | null;
+    }[];
+  }>;
+};
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<'zip' | 'pdf'>('zip');
@@ -14,7 +53,7 @@ export default function Home() {
   // Single PDF states
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<Record<string, any>[]>([]);
+  const [results, setResults] = useState<DocumentResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [filter, setFilter] = useState<'all' | 'approved' | 'pending'>('all');
@@ -22,7 +61,7 @@ export default function Home() {
   // ZIP Inspection states
   const [zipFile, setZipFile] = useState<File | null>(null);
   const [zipLoading, setZipLoading] = useState(false);
-  const [zipResults, setZipResults] = useState<Record<string, any> | null>(null);
+  const [zipResults, setZipResults] = useState<ZipResult | null>(null);
   const [zipError, setZipError] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [recipientEmail, setRecipientEmail] = useState("");
@@ -114,8 +153,8 @@ export default function Home() {
         }
       }
       setResults(newResults);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -151,14 +190,14 @@ export default function Home() {
           }
         }
       }
-    } catch (err: any) {
-      setZipError(err.message);
+    } catch (err) {
+      setZipError(err instanceof Error ? err.message : String(err));
     } finally {
       setZipLoading(false);
     }
   };
 
-  const handleSendAlert = async (projName: string, missingItems: string[], missingSigs: any[]) => {
+  const handleSendAlert = async (projName: string, missingItems: string[], missingSigs: { path: string; missing_roles: string[] }[]) => {
     if (!recipientEmail || !recipientEmail.includes("@")) {
       alert("Masukkan alamat email PIC yang valid");
       return;
@@ -182,8 +221,8 @@ export default function Home() {
       } else {
         setAlertFeedback(`Gagal mengirim: ${data.detail || "Error"}`);
       }
-    } catch (err: any) {
-      setAlertFeedback(`Gagal: ${err.message}`);
+    } catch (err) {
+      setAlertFeedback(`Gagal: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setAlertSending(false);
     }
@@ -192,12 +231,12 @@ export default function Home() {
   const toggleRoleStatus = (docIndex: number, role: string) => {
     const newResults = [...results];
     const doc = newResults[docIndex];
-    if (doc.error) return;
+    if ('error' in doc) return;
 
     doc.results[role].signed = !doc.results[role].signed;
     doc.results[role].manual_override = true; 
     
-    const missingRoles = Object.entries(doc.results).filter(([_, data]: any) => !data.signed).map(([r]) => r);
+    const missingRoles = Object.entries(doc.results).filter(([, data]) => !data.signed).map(([r]) => r);
     doc.status = missingRoles.length === 0 ? 'APPROVED' : 'PENDING';
     doc.jira_labels_to_add = missingRoles.map(r => `waiting-sign-off-${r.replace(/ /g, '-').toLowerCase()}`);
     
@@ -206,25 +245,25 @@ export default function Home() {
 
   const scrollToScanner = () => document.getElementById("scanner-section")?.scrollIntoView({ behavior: "smooth" });
 
-  const validResults = results.filter(r => !r.error);
+  const validResults = results.filter((r): r is Exclude<DocumentResult, { error: string }> => !('error' in r));
   const approvedCount = validResults.filter(r => r.status === 'APPROVED').length;
   const pendingCount = validResults.filter(r => r.status !== 'APPROVED').length;
 
   const filteredResults = results.filter(res => {
     if (filter === 'all') return true;
-    if (res.error) return false;
+    if ('error' in res) return false;
     return filter === 'approved' ? res.status === 'APPROVED' : res.status !== 'APPROVED';
   });
 
   const activeProjectData = zipResults && selectedProject ? zipResults.projects[selectedProject] : null;
   const missingFilesForAlert = activeProjectData 
-    ? activeProjectData.items.filter((i: any) => i.status === "Belum ditemukan").map((i: any) => i.path)
+    ? activeProjectData.items.filter((i) => i.status === "Belum ditemukan").map((i) => i.path)
     : [];
   const missingSigsForAlert = activeProjectData
-    ? activeProjectData.items.filter((i: any) => i.signature_analysis && i.signature_analysis.status === "PENDING").map((i: any) => ({
+    ? activeProjectData.items.flatMap((i) => i.signature_analysis?.status === "PENDING" ? [{
         path: i.path,
         missing_roles: i.signature_analysis.missing_roles
-      }))
+      }] : [])
     : [];
 
   return (
@@ -457,7 +496,7 @@ export default function Home() {
 
                       {/* CHECKLIST ITEMS TABLE */}
                       <div className="divide-y divide-slate-100">
-                        {activeProjectData.items.map((item: any, idx: number) => {
+                        {activeProjectData.items.map((item, idx) => {
                           const isFound = item.status === "Ditemukan";
                           const hasSig = item.signature_analysis;
                           const sigPending = hasSig && hasSig.status === "PENDING";
@@ -557,6 +596,8 @@ export default function Home() {
                   </div>
                 </div>
 
+                {error && <div role="alert" className="mt-4 p-4 bg-red-50 text-red-700 rounded-xl text-sm">{error}</div>}
+
                 {!loading && files.length > 0 && results.length === 0 && (
                   <div className="mt-4 space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
                     {files.map((f, i) => (
@@ -602,7 +643,7 @@ export default function Home() {
 
                     {filteredResults.map((res, index) => {
                       const originalIndex = results.findIndex(r => r === res);
-                      if (res.error) {
+                      if ('error' in res) {
                         return (
                           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.1 }} key={index} className="bg-red-50 border border-red-100 p-6 rounded-[2rem] shadow-sm">
                             <div className="font-bold text-red-900 flex items-center gap-2"><AlertCircle className="w-5 h-5" /> {res.fileName}</div>
@@ -612,7 +653,7 @@ export default function Home() {
                       }
                       
                       const tRoles = Object.keys(res.results).length;
-                      const sRoles = Object.values(res.results).filter((r: any) => r.signed).length;
+                      const sRoles = Object.values(res.results).filter((r) => r.signed).length;
                       const isOk = res.status === 'APPROVED';
                       
                       return (
@@ -637,7 +678,7 @@ export default function Home() {
                             </div>
 
                             <div className="grid sm:grid-cols-2 gap-4">
-                              {Object.entries(res.results).map(([role, data]: any) => (
+                              {Object.entries(res.results).map(([role, data]) => (
                                 <div key={role} className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${data.signed ? 'bg-white shadow-sm border-[#006747]/20' : 'bg-[#FFF8E7]/40 border-[#D39121]/30'}`}>
                                   <div className="flex flex-col overflow-hidden pr-2">
                                     <span className="font-bold text-slate-700 text-sm truncate">{role}</span>

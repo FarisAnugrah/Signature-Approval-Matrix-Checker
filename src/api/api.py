@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 import pytesseract
 from pdf2image import convert_from_path
+from pypdf import PdfReader
 import json
 import re
 import tempfile

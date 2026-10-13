@@ -70,7 +70,8 @@ def analyze_document(pdf_path, doc_type):
     for r, d in results.items():
         print(f"{r:30} | Found: {d['found']} | Signed: {d['signed']} | Ink: {d['ink']:.3f}")
 
-print("=== BRD ===")
-analyze_document("data/samples/BRD Aplikasi SPRINT (Sistem Pengelolaan Rekening Terintegrasi).pdf", "BRD")
-print("\n=== PCR ===")
-analyze_document("data/samples/PCR - 2605022022A - SPRINT Full Sign (1) (1).pdf", "PCR")
+if __name__ == "__main__":
+    print("=== BRD ===")
+    analyze_document("data/samples/BRD Aplikasi SPRINT (Sistem Pengelolaan Rekening Terintegrasi).pdf", "BRD")
+    print("\n=== PCR ===")
+    analyze_document("data/samples/PCR - 2605022022A - SPRINT Full Sign (1) (1).pdf", "PCR")

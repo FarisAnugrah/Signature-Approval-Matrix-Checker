@@ -1,11 +1,19 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ShieldCheck, Database, PlusCircle, ArrowLeft, Save, Trash2, Edit2, Loader2, CheckCircle2 } from "lucide-react";
+import Link from "next/link";
+import { Database, PlusCircle, ArrowLeft, Save, Trash2, Loader2, CheckCircle2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
+type Template = {
+  identifiers: string[];
+  approval_pages_from_end: number;
+  roles: string[];
+  roi_offset?: { height_multiplier: number };
+};
+
 export default function AdminPanel() {
-  const [templates, setTemplates] = useState<Record<string, any> | null>(null);
+  const [templates, setTemplates] = useState<Record<string, Template> | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState(false);
@@ -95,7 +103,7 @@ export default function AdminPanel() {
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             Save Changes
           </button>
-          <a href="/" className="text-slate-500 hover:text-[#006747] font-bold text-sm flex items-center gap-1"><ArrowLeft className="w-4 h-4" /> Exit</a>
+          <Link href="/" className="text-slate-500 hover:text-[#006747] font-bold text-sm flex items-center gap-1"><ArrowLeft className="w-4 h-4" /> Exit</Link>
         </div>
       </nav>
 
