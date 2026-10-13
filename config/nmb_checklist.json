@@ -1,0 +1,136 @@
+{
+  "tree": [
+    {
+      "path": "pengadaan",
+      "required": true,
+      "requires_signature": false
+    },
+    {
+      "path": "aks",
+      "required": true,
+      "requires_signature": false
+    },
+    {
+      "path": "brd",
+      "required": true,
+      "requires_signature": true,
+      "template_type": "BRD"
+    },
+    {
+      "path": "requirement gathering/pcr",
+      "required": true,
+      "requires_signature": true,
+      "template_type": "PCR"
+    },
+    {
+      "path": "requirement gathering/fsd",
+      "required": true,
+      "requires_signature": false
+    },
+    {
+      "path": "requirement gathering/tsd",
+      "required": true,
+      "requires_signature": false
+    },
+    {
+      "path": "requirement gathering/security asessement",
+      "required": true,
+      "requires_signature": false
+    },
+    {
+      "path": "development/ut/android",
+      "required": true,
+      "requires_signature": false
+    },
+    {
+      "path": "development/ut/ios",
+      "required": true,
+      "requires_signature": false
+    },
+    {
+      "path": "development/ut/BA UT",
+      "required": true,
+      "requires_signature": true
+    },
+    {
+      "path": "functional testing & non functional testing/qa checklist",
+      "required": true,
+      "requires_signature": false
+    },
+    {
+      "path": "functional testing & non functional testing/sit/ba sit",
+      "required": true,
+      "requires_signature": true
+    },
+    {
+      "path": "functional testing & non functional testing/sit/android",
+      "required": true,
+      "requires_signature": false
+    },
+    {
+      "path": "functional testing & non functional testing/sit/ios",
+      "required": true,
+      "requires_signature": false
+    },
+    {
+      "path": "functional testing & non functional testing/system tesing/compability test",
+      "required": true,
+      "requires_signature": false
+    },
+    {
+      "path": "functional testing & non functional testing/system tesing/performance test",
+      "required": true,
+      "requires_signature": false
+    },
+    {
+      "path": "functional testing & non functional testing/system tesing/regression test",
+      "required": true,
+      "requires_signature": false
+    },
+    {
+      "path": "functional testing & non functional testing/uat/android",
+      "required": true,
+      "requires_signature": false
+    },
+    {
+      "path": "functional testing & non functional testing/uat/ios",
+      "required": true,
+      "requires_signature": false
+    },
+    {
+      "path": "functional testing & non functional testing/uat/ba uat",
+      "required": true,
+      "requires_signature": true
+    },
+    {
+      "path": "deployment/form promote & memo",
+      "required": true,
+      "requires_signature": true
+    },
+    {
+      "path": "deployment/hasil promote",
+      "required": true,
+      "requires_signature": false
+    },
+    {
+      "path": "deployment/pok/pok aplikasi",
+      "required": true,
+      "requires_signature": false
+    },
+    {
+      "path": "deployment/pok/pok promote",
+      "required": true,
+      "requires_signature": false
+    },
+    {
+      "path": "deployment/pok/pok rollback",
+      "required": true,
+      "requires_signature": false
+    },
+    {
+      "path": "deployment/test operation",
+      "required": true,
+      "requires_signature": false
+    }
+  ]
+}

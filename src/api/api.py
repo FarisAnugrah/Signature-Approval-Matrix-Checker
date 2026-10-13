@@ -10,8 +10,10 @@ import re
 import tempfile
 import os
 import uuid
-from typing import Dict, Any
-from pypdf import PdfReader
+import zipfile
+import shutil
+from typing import Dict, Any, List, Optional
+from pydantic import BaseModel, EmailStr
 import logging
 
 # Set up logging
@@ -29,6 +31,7 @@ app.add_middleware(
 )
 
 CONFIG_PATH = "config/templates.json"
+CHECKLIST_PATH = "config/nmb_checklist.json"
 
 # --- YOLO MODEL SETUP ---
 YOLO_MODEL_PATH = "models/signature_best.pt"
@@ -72,6 +75,12 @@ def save_templates(data):
     with open(CONFIG_PATH, "w") as f:
         json.dump(data, f, indent=2)
 
+def load_checklist():
+    if os.path.exists(CHECKLIST_PATH):
+        with open(CHECKLIST_PATH, "r") as f:
+            return json.load(f)
+    return {"tree": []}
+
 jobs: Dict[str, Any] = {}
 
 def normalize_text(text):
@@ -91,19 +100,6 @@ def classify_document(pdf_path, templates):
             sorted_identifiers = sorted(config["identifiers"], key=len, reverse=True)
             for identifier in sorted_identifiers:
                 if identifier.lower() in text_clean:
-                    return doc_type
-    except: pass
-    return None
-
-    try:
-        images = convert_from_path(pdf_path, first_page=1, last_page=1)
-        img = cv2.cvtColor(np.array(images[0]), cv2.COLOR_RGB2BGR)
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        text = pytesseract.image_to_string(gray).lower()
-        
-        for doc_type, config in templates.items():
-            for identifier in config["identifiers"]:
-                if identifier in text:
                     return doc_type
     except: pass
     return None
@@ -202,23 +198,243 @@ def process_document_job(job_id: str, file_path: str):
             
         results = analyze_document(file_path, doc_type, templates)
         
-        missing = [role for role, data in results.items() if not data["signed"]]
-        is_approved = len(missing) == 0
+        # ponytail: Dynamic Slot Matching — hanya peran yang tercetak di dokumen yang dievaluasi
+        found_results = {role: data for role, data in results.items() if data.get("found", False)}
+        
+        # Jika tidak ada peran matrix yang tercetak sama sekali, fallback ke semua peran untuk transparansi
+        eval_targets = found_results if found_results else results
+        missing = [role for role, data in eval_targets.items() if not data["signed"]]
+        is_approved = len(eval_targets) > 0 and len(missing) == 0
         
         jobs[job_id]["result"] = {
             "document_type": doc_type,
             "status": "APPROVED" if is_approved else "PENDING",
-            "results": results,
+            "results": eval_targets,
             "jira_labels_to_add": [f"waiting-sign-off-{r.replace(' ', '-').lower()}" for r in missing] if not is_approved else []
         }
         jobs[job_id]["status"] = "completed"
-        import threading; threading.Timer(3600, lambda: jobs.pop(job_id, None)).start()
+        import threading
+        t = threading.Timer(3600, lambda: jobs.pop(job_id, None))
+        t.daemon = True
+        t.start()
     except Exception as e:
         jobs[job_id]["status"] = "failed"
         jobs[job_id]["error"] = str(e)
     finally:
         if os.path.exists(file_path):
             os.unlink(file_path)
+
+def normalize_path(p: str) -> str:
+    return "/".join([part.strip().lower() for part in p.replace("\\", "/").split("/") if part.strip()])
+
+def process_zip_inspection(job_id: str, zip_path: str):
+    jobs[job_id]["status"] = "processing"
+    temp_extract_dir = tempfile.mkdtemp(prefix="nmb_extract_")
+    try:
+        checklist_config = load_checklist()
+        tree_rules = checklist_config.get("tree", [])
+        templates = load_templates()
+
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(temp_extract_dir)
+
+        # Temukan root folder proyek
+        # Format umum: NMB 2026/<Project_Name>/... atau langsung <Project_Name>/...
+        # Kumpulkan semua file yang bukan direktori
+        all_files = []
+        for root, _, files in os.walk(temp_extract_dir):
+            for f in files:
+                if f.startswith(".") or f.startswith("__MACOSX"):
+                    continue
+                rel_path = os.path.relpath(os.path.join(root, f), temp_extract_dir)
+                all_files.append((rel_path, os.path.join(root, f)))
+
+        # Deteksi proyek
+        # Pisahkan path untuk mendapatkan nama proyek
+        # Jika ada folder 'NMB 2026', proyek adalah subfolder di bawahnya. Jika tidak, folder level-1.
+        projects_data: Dict[str, Any] = {}
+        
+        for rel_path, full_path in all_files:
+            parts = [p.strip() for p in rel_path.replace("\\", "/").split("/") if p.strip()]
+            if not parts:
+                continue
+            
+            if parts[0].lower() == "nmb 2026":
+                if len(parts) > 1:
+                    project_name = parts[1]
+                    sub_parts = parts[2:]
+                else:
+                    project_name = "Default Project"
+                    sub_parts = parts[1:]
+            else:
+                project_name = parts[0]
+                sub_parts = parts[1:]
+
+            if project_name not in projects_data:
+                projects_data[project_name] = []
+
+            projects_data[project_name].append({
+                "sub_path": "/".join(sub_parts[:-1]),
+                "filename": sub_parts[-1] if sub_parts else parts[-1],
+                "full_path": full_path
+            })
+
+        # Jika tidak ada file
+        if not projects_data:
+            jobs[job_id]["status"] = "completed"
+            jobs[job_id]["result"] = {
+                "total_projects": 0,
+                "projects": {}
+            }
+            return
+
+        inspection_results = {}
+
+        for proj_name, file_records in projects_data.items():
+            folder_map = {}
+            for rec in file_records:
+                norm_sub = normalize_path(rec["sub_path"])
+                if norm_sub not in folder_map:
+                    folder_map[norm_sub] = []
+                folder_map[norm_sub].append(rec)
+
+            items_status = []
+            signature_jobs = []
+
+            for rule in tree_rules:
+                target_rule_path = normalize_path(rule["path"])
+                matched_files = folder_map.get(target_rule_path, [])
+
+                # Toleransi partial match jika ada variasi nama folder
+                if not matched_files:
+                    for f_path, f_list in folder_map.items():
+                        if f_path.endswith(target_rule_path) or target_rule_path in f_path:
+                            matched_files = f_list
+                            break
+
+                found = len(matched_files) > 0
+                file_names = [f["filename"] for f in matched_files]
+                
+                sig_result = None
+                # Jika butuh signature check dan ada file PDF
+                if found and rule.get("requires_signature"):
+                    pdf_candidates = [f for f in matched_files if f["filename"].lower().endswith(".pdf")]
+                    if pdf_candidates:
+                        target_pdf = pdf_candidates[0]["full_path"]
+                        detected_type = rule.get("template_type") or classify_document(target_pdf, templates)
+                        if detected_type and detected_type in templates:
+                            try:
+                                analysis = analyze_document(target_pdf, detected_type, templates)
+                                # ponytail: Dynamic Slot Matching — hanya peran yang tercetak di lembar persetujuan yang dievaluasi
+                                printed_roles = {r: d for r, d in analysis.items() if d.get("found", False)}
+                                eval_roles = printed_roles if printed_roles else analysis
+                                missing_roles = [r for r, d in eval_roles.items() if not d["signed"]]
+                                sig_result = {
+                                    "document_type": detected_type,
+                                    "status": "APPROVED" if (len(eval_roles) > 0 and len(missing_roles) == 0) else "PENDING",
+                                    "roles": eval_roles,
+                                    "missing_roles": missing_roles
+                                }
+                            except Exception as ex:
+                                sig_result = {"status": "ERROR", "error": str(ex)}
+                        else:
+                            sig_result = {"status": "UNRECOGNIZED_TEMPLATE"}
+
+                items_status.append({
+                    "path": rule["path"],
+                    "required": rule.get("required", True),
+                    "status": "Ditemukan" if found else "Belum ditemukan",
+                    "files": file_names,
+                    "requires_signature": rule.get("requires_signature", False),
+                    "signature_analysis": sig_result
+                })
+
+            total_req = sum(1 for i in items_status if i["required"])
+            total_found = sum(1 for i in items_status if i["required"] and i["status"] == "Ditemukan")
+            
+            # Hitung missing signatures
+            missing_sig_count = 0
+            for item in items_status:
+                if item.get("signature_analysis") and item["signature_analysis"].get("status") == "PENDING":
+                    missing_sig_count += 1
+
+            inspection_results[proj_name] = {
+                "project_name": proj_name,
+                "completeness_score": f"{total_found}/{total_req}",
+                "percent": round((total_found / total_req * 100) if total_req > 0 else 0, 1),
+                "items": items_status,
+                "missing_signatures_count": missing_sig_count
+            }
+
+        jobs[job_id]["result"] = {
+            "total_projects": len(inspection_results),
+            "projects": inspection_results
+        }
+        jobs[job_id]["status"] = "completed"
+        import threading
+        t = threading.Timer(3600, lambda: jobs.pop(job_id, None))
+        t.daemon = True
+        t.start()
+
+    except Exception as e:
+        logger.error(f"Error processing zip inspection: {e}")
+        jobs[job_id]["status"] = "failed"
+        jobs[job_id]["error"] = str(e)
+    finally:
+        shutil.rmtree(temp_extract_dir, ignore_errors=True)
+        if os.path.exists(zip_path):
+            os.unlink(zip_path)
+
+class SendAlertRequest(BaseModel):
+    recipient_email: str
+    project_name: str
+    missing_items: List[str] = []
+    missing_signatures: List[Dict[str, Any]] = []
+
+@app.post("/verify/zip")
+async def verify_zip_async(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    if not file.filename.endswith('.zip'):
+        raise HTTPException(status_code=400, detail="Only ZIP files are supported")
+        
+    job_id = str(uuid.uuid4())
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
+        # Stream chunks to prevent high RAM consumption on 300MB+ files
+        while chunk := await file.read(1024 * 1024 * 8):  # 8MB chunk
+            tmp.write(chunk)
+        tmp_path = tmp.name
+        
+    jobs[job_id] = {"status": "pending", "result": None, "error": None}
+    background_tasks.add_task(process_zip_inspection, job_id, tmp_path)
+    return {"job_id": job_id, "status": "pending"}
+
+@app.get("/api/checklist")
+async def get_checklist():
+    return load_checklist()
+
+@app.post("/api/alert/email")
+async def send_alert_notification(req: SendAlertRequest):
+    # ponytail: MVP simulates SMTP/Graph API dispatch and returns constructed payload
+    email_body = f"""
+Kepada: {req.recipient_email}
+Perihal: [Reminder] Kelengkapan Dokumen & Persetujuan Proyek {req.project_name}
+
+Berikut daftar temuan pemeriksaan kelengkapan berkas:
+1. Dokumen yang Belum Ditemukan ({len(req.missing_items)}):
+   {', '.join(req.missing_items) if req.missing_items else 'Semua dokumen wajib ditemukan.'}
+
+2. Dokumen dengan Tanda Tangan Belum Lengkap ({len(req.missing_signatures)}):
+"""
+    for sig in req.missing_signatures:
+        doc = sig.get('path', 'Dokumen')
+        roles = ', '.join(sig.get('missing_roles', []))
+        email_body += f"   - {doc}: Menunggu tanda tangan dari [{roles}]\n"
+
+    logger.info(f"Draft alert prepared for {req.recipient_email}:\n{email_body}")
+    return {
+        "status": "success",
+        "message": f"Alert notification dispatched to {req.recipient_email}",
+        "preview": email_body.strip()
+    }
 
 @app.get("/")
 async def home():

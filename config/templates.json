@@ -29,7 +29,8 @@
     "roles": [
       "System Analyst",
       "Project Owner",
-      "Head Of Development"
+      "Head Of Development",
+      "Business Relationship Manager"
     ],
     "roi_offset": {
       "direction": "above",
