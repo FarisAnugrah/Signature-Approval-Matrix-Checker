@@ -1,4 +1,5 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
+from src.core.zip_checklist import MAX_MEMBER, inspect_archive, validate_options
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import cv2
@@ -12,7 +13,6 @@ import tempfile
 import os
 import uuid
 import zipfile
-import shutil
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, EmailStr
 import logging
@@ -225,166 +225,53 @@ def process_document_job(job_id: str, file_path: str):
         if os.path.exists(file_path):
             os.unlink(file_path)
 
-def normalize_path(p: str) -> str:
-    return "/".join([part.strip().lower() for part in p.replace("\\", "/").split("/") if part.strip()])
-
-def process_zip_inspection(job_id: str, zip_path: str):
-    jobs[job_id]["status"] = "processing"
-    temp_extract_dir = tempfile.mkdtemp(prefix="nmb_extract_")
+def check_zip_signature(archive, info, template_type):
     try:
-        checklist_config = load_checklist()
-        tree_rules = checklist_config.get("tree", [])
         templates = load_templates()
+        if template_type not in templates:
+            return {"status": "UNSUPPORTED"}
+        with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
+            with archive.open(info) as source:
+                size = 0
+                while chunk := source.read(1024 * 1024):
+                    size += len(chunk)
+                    if size > MAX_MEMBER:
+                        raise ValueError("PDF exceeds ZIP member limit")
+                    tmp.write(chunk)
+            tmp.flush()
+            reader = PdfReader(tmp.name)
+            if len(reader.pages) > 100 or any(float(p.mediabox.width) > 2000 or float(p.mediabox.height) > 2000 for p in reader.pages):
+                return {"status": "NOT_CHECKED"}
+            if classify_document(tmp.name, templates) != template_type:
+                return {"status": "UNRECOGNIZED_TEMPLATE"}
+            analysis = analyze_document(tmp.name, template_type, templates)
+        roles = {r: d for r, d in analysis.items() if d.get("found", False)}
+        if not roles:
+            return {"status": "NOT_CHECKED"}
+        missing = [r for r, d in roles.items() if not d["signed"]]
+        return {"document_type": template_type, "status": "PENDING" if missing else "APPROVED",
+                "roles": roles, "missing_roles": missing}
+    except Exception as exc:
+        return {"status": "ERROR", "error": str(exc)}
 
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(temp_extract_dir)
 
-        # Temukan root folder proyek
-        # Format umum: NMB 2026/<Project_Name>/... atau langsung <Project_Name>/...
-        # Kumpulkan semua file yang bukan direktori
-        all_files = []
-        for root, _, files in os.walk(temp_extract_dir):
-            for f in files:
-                if f.startswith(".") or f.startswith("__MACOSX"):
-                    continue
-                rel_path = os.path.relpath(os.path.join(root, f), temp_extract_dir)
-                all_files.append((rel_path, os.path.join(root, f)))
-
-        # Deteksi proyek
-        # Pisahkan path untuk mendapatkan nama proyek
-        # Jika ada folder 'NMB 2026', proyek adalah subfolder di bawahnya. Jika tidak, folder level-1.
-        projects_data: Dict[str, Any] = {}
-        
-        for rel_path, full_path in all_files:
-            parts = [p.strip() for p in rel_path.replace("\\", "/").split("/") if p.strip()]
-            if not parts:
-                continue
-            
-            if parts[0].lower() == "nmb 2026":
-                if len(parts) > 1:
-                    project_name = parts[1]
-                    sub_parts = parts[2:]
-                else:
-                    project_name = "Default Project"
-                    sub_parts = parts[1:]
-            else:
-                project_name = parts[0]
-                sub_parts = parts[1:]
-
-            if project_name not in projects_data:
-                projects_data[project_name] = []
-
-            projects_data[project_name].append({
-                "sub_path": "/".join(sub_parts[:-1]),
-                "filename": sub_parts[-1] if sub_parts else parts[-1],
-                "full_path": full_path
-            })
-
-        # Jika tidak ada file
-        if not projects_data:
-            jobs[job_id]["status"] = "completed"
-            jobs[job_id]["result"] = {
-                "total_projects": 0,
-                "projects": {}
-            }
-            return
-
-        inspection_results = {}
-
-        for proj_name, file_records in projects_data.items():
-            folder_map = {}
-            for rec in file_records:
-                norm_sub = normalize_path(rec["sub_path"])
-                if norm_sub not in folder_map:
-                    folder_map[norm_sub] = []
-                folder_map[norm_sub].append(rec)
-
-            items_status = []
-            signature_jobs = []
-
-            for rule in tree_rules:
-                target_rule_path = normalize_path(rule["path"])
-                matched_files = folder_map.get(target_rule_path, [])
-
-                # Toleransi partial match jika ada variasi nama folder
-                if not matched_files:
-                    for f_path, f_list in folder_map.items():
-                        if f_path.endswith(target_rule_path) or target_rule_path in f_path:
-                            matched_files = f_list
-                            break
-
-                found = len(matched_files) > 0
-                file_names = [f["filename"] for f in matched_files]
-                
-                sig_result = None
-                # Jika butuh signature check dan ada file PDF
-                if found and rule.get("requires_signature"):
-                    pdf_candidates = [f for f in matched_files if f["filename"].lower().endswith(".pdf")]
-                    if pdf_candidates:
-                        target_pdf = pdf_candidates[0]["full_path"]
-                        detected_type = rule.get("template_type") or classify_document(target_pdf, templates)
-                        if detected_type and detected_type in templates:
-                            try:
-                                analysis = analyze_document(target_pdf, detected_type, templates)
-                                # ponytail: Dynamic Slot Matching — hanya peran yang tercetak di lembar persetujuan yang dievaluasi
-                                printed_roles = {r: d for r, d in analysis.items() if d.get("found", False)}
-                                eval_roles = printed_roles if printed_roles else analysis
-                                missing_roles = [r for r, d in eval_roles.items() if not d["signed"]]
-                                sig_result = {
-                                    "document_type": detected_type,
-                                    "status": "APPROVED" if (len(eval_roles) > 0 and len(missing_roles) == 0) else "PENDING",
-                                    "roles": eval_roles,
-                                    "missing_roles": missing_roles
-                                }
-                            except Exception as ex:
-                                sig_result = {"status": "ERROR", "error": str(ex)}
-                        else:
-                            sig_result = {"status": "UNRECOGNIZED_TEMPLATE"}
-
-                items_status.append({
-                    "path": rule["path"],
-                    "required": rule.get("required", True),
-                    "status": "Ditemukan" if found else "Belum ditemukan",
-                    "files": file_names,
-                    "requires_signature": rule.get("requires_signature", False),
-                    "signature_analysis": sig_result
-                })
-
-            total_req = sum(1 for i in items_status if i["required"])
-            total_found = sum(1 for i in items_status if i["required"] and i["status"] == "Ditemukan")
-            
-            # Hitung missing signatures
-            missing_sig_count = 0
-            for item in items_status:
-                if item.get("signature_analysis") and item["signature_analysis"].get("status") == "PENDING":
-                    missing_sig_count += 1
-
-            inspection_results[proj_name] = {
-                "project_name": proj_name,
-                "completeness_score": f"{total_found}/{total_req}",
-                "percent": round((total_found / total_req * 100) if total_req > 0 else 0, 1),
-                "items": items_status,
-                "missing_signatures_count": missing_sig_count
-            }
-
-        jobs[job_id]["result"] = {
-            "total_projects": len(inspection_results),
-            "projects": inspection_results
-        }
+def process_zip_inspection(job_id: str, zip_path: str, options=None):
+    jobs[job_id]["status"] = "processing"
+    try:
+        with zipfile.ZipFile(zip_path) as archive:
+            jobs[job_id]["result"] = inspect_archive(archive, options or {}, load_checklist().get("tree", []), check_zip_signature)
         jobs[job_id]["status"] = "completed"
-        import threading
-        t = threading.Timer(3600, lambda: jobs.pop(job_id, None))
-        t.daemon = True
-        t.start()
-
-    except Exception as e:
-        logger.error(f"Error processing zip inspection: {e}")
+    except Exception as exc:
+        logger.error(f"Error processing zip inspection: {exc}")
         jobs[job_id]["status"] = "failed"
-        jobs[job_id]["error"] = str(e)
+        jobs[job_id]["error"] = str(exc)
     finally:
-        shutil.rmtree(temp_extract_dir, ignore_errors=True)
         if os.path.exists(zip_path):
             os.unlink(zip_path)
+        import threading
+        timer = threading.Timer(3600, lambda: jobs.pop(job_id, None))
+        timer.daemon = True
+        timer.start()
 
 class SendAlertRequest(BaseModel):
     recipient_email: str
@@ -393,19 +280,79 @@ class SendAlertRequest(BaseModel):
     missing_signatures: List[Dict[str, Any]] = []
 
 @app.post("/verify/zip")
-async def verify_zip_async(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
-    if not file.filename.endswith('.zip'):
+async def verify_zip_async(background_tasks: BackgroundTasks, file: UploadFile = File(...), options: str = Form("{}")):
+    if not (file.filename or "").lower().endswith('.zip'):
         raise HTTPException(status_code=400, detail="Only ZIP files are supported")
-        
+    try:
+        if len(options) > 128 * 1024:
+            raise ValueError("Checklist options too large")
+        parsed = json.loads(options)
+        validate_options(parsed, load_checklist().get("tree", []))
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     job_id = str(uuid.uuid4())
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
-        # Stream chunks to prevent high RAM consumption on 300MB+ files
-        while chunk := await file.read(1024 * 1024 * 8):  # 8MB chunk
-            tmp.write(chunk)
-        tmp_path = tmp.name
-        
-    jobs[job_id] = {"status": "pending", "result": None, "error": None}
-    background_tasks.add_task(process_zip_inspection, job_id, tmp_path)
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
+            tmp_path = tmp.name
+            while chunk := await file.read(1024 * 1024):
+                tmp.write(chunk)
+        jobs[job_id] = {"status": "pending", "result": None, "error": None}
+        background_tasks.add_task(process_zip_inspection, job_id, tmp_path, parsed)
+    except BaseException:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
+    finally:
+        await file.close()
+    return {"job_id": job_id, "status": "pending"}
+
+
+@app.post("/verify/folder")
+async def verify_folder_async(
+    background_tasks: BackgroundTasks,
+    files: List[UploadFile] = File(...),
+    paths: str = Form("[]"),
+    options: str = Form("{}")
+):
+    try:
+        if len(options) > 128 * 1024 or len(paths) > 2 * 1024 * 1024:
+            raise ValueError("Input options or paths too large")
+        parsed_options = json.loads(options)
+        validate_options(parsed_options, load_checklist().get("tree", []))
+        parsed_paths = json.loads(paths)
+        if not isinstance(parsed_paths, list) or len(parsed_paths) != len(files):
+            raise ValueError("Paths list must match files count")
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if len(files) > 10000:
+        raise HTTPException(status_code=400, detail="Folder exceeds 10,000 files limit")
+
+    job_id = str(uuid.uuid4())
+    tmp_zip_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp_zip:
+            tmp_zip_path = tmp_zip.name
+            with zipfile.ZipFile(tmp_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                for file_obj, rel_p in zip(files, parsed_paths):
+                    clean_rel = rel_p.replace("\\", "/").strip().lstrip("/")
+                    if not clean_rel:
+                        clean_rel = file_obj.filename or "unknown_file"
+                    with tempfile.NamedTemporaryFile(delete=True) as temp_file:
+                        while chunk := await file_obj.read(1024 * 1024):
+                            temp_file.write(chunk)
+                        temp_file.flush()
+                        zf.write(temp_file.name, arcname=clean_rel)
+                    await file_obj.close()
+
+        jobs[job_id] = {"status": "pending", "result": None, "error": None}
+        background_tasks.add_task(process_zip_inspection, job_id, tmp_zip_path, parsed_options)
+    except BaseException:
+        if tmp_zip_path and os.path.exists(tmp_zip_path):
+            os.unlink(tmp_zip_path)
+        raise
+
     return {"job_id": job_id, "status": "pending"}
 
 @app.get("/api/checklist")

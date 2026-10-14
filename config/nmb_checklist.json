@@ -33,7 +33,17 @@
       "requires_signature": false
     },
     {
-      "path": "requirement gathering/security asessement",
+      "path": "requirement gathering/security asessement/security checklist",
+      "required": true,
+      "requires_signature": false
+    },
+    {
+      "path": "requirement gathering/security asessement/security kuisoner",
+      "required": true,
+      "requires_signature": false
+    },
+    {
+      "path": "development/ut",
       "required": true,
       "requires_signature": false
     },
@@ -48,7 +58,7 @@
       "requires_signature": false
     },
     {
-      "path": "development/ut/BA UT",
+      "path": "development/ut/ba ut",
       "required": true,
       "requires_signature": true
     },
@@ -73,17 +83,22 @@
       "requires_signature": false
     },
     {
-      "path": "functional testing & non functional testing/system tesing/compability test",
+      "path": "functional testing & non functional testing/system testing/ba st",
+      "required": true,
+      "requires_signature": true
+    },
+    {
+      "path": "functional testing & non functional testing/system testing/compability test",
       "required": true,
       "requires_signature": false
     },
     {
-      "path": "functional testing & non functional testing/system tesing/performance test",
+      "path": "functional testing & non functional testing/system testing/performance test",
       "required": true,
       "requires_signature": false
     },
     {
-      "path": "functional testing & non functional testing/system tesing/regression test",
+      "path": "functional testing & non functional testing/system testing/regression test",
       "required": true,
       "requires_signature": false
     },
