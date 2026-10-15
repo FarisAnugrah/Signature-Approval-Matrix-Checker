@@ -8,7 +8,7 @@ import { zipRequest } from "./zip-request";
 import {
   UploadCloud, CheckCircle2, XCircle, Loader2, FileText, ShieldCheck,
   ChevronRight, ChevronDown, AlertCircle, ScanLine, Terminal, Edit3,
-  Check, ListChecks, Trash2, FolderTree
+  Check, ListChecks, Trash2, FolderTree, Download, ChevronsUpDown, Filter
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -92,9 +92,12 @@ export default function Home() {
   const [mappingDirty, setMappingDirty] = useState(false);
   const [storageNotice, setStorageNotice] = useState('');
 
+  const [checklistFilter, setChecklistFilter] = useState<'all' | 'missing' | 'empty' | 'pending_sig'>('all');
+
   const resetZip = () => {
     setZipResults(null); setFolderResults(null); setProjectRoots([]); setFolderMapping({}); setMappingDirty(false);
     setExpandedZipItems({}); setExpandedFolderItems({});
+    setChecklistFilter('all');
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -331,6 +334,40 @@ export default function Home() {
         missing_roles: i.signature_analysis.missing_roles
       }] : [])
     : [];
+
+  const visibleItems = (activeProjectData?.items ?? []).map((item, idx) => ({ item, idx })).filter(({ item }) =>
+    checklistFilter === 'all' ||
+    (checklistFilter === 'missing' && item.status !== 'Ditemukan') ||
+    (checklistFilter === 'empty' && item.status === 'Folder kosong') ||
+    (checklistFilter === 'pending_sig' && item.signature_analysis?.status === 'PENDING')
+  );
+  const exportReport = (format: 'csv' | 'json') => {
+    if (!activeProjectData) return;
+    const cell = (value: string) => `"${(/^[\s]*[=+@-]/.test(value) ? "'" + value : value).replaceAll('"', '""')}"`;
+    const rows = [['Kategori', 'Status', 'Berkas', 'Audit TTD'], ...activeProjectData.items.map(item => [item.path, item.status, item.files.join('\n'), item.signature_analysis?.status ?? '-'])];
+    const content = format === 'json' ? JSON.stringify(activeProjectData, null, 2) : '\uFEFF' + rows.map(row => row.map(cell).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([content], { type: format === 'json' ? 'application/json' : 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `laporan-${activeProjectData.project_name.replace(/[^a-zA-Z0-9_-]/g, '_')}.${format}`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const checklistToolbar = (
+    <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 p-5 text-sm">
+      <label className="flex items-center gap-2"><Filter className="h-4 w-4" /> Filter
+        <select value={checklistFilter} onChange={e => setChecklistFilter(e.target.value as typeof checklistFilter)} className="rounded-lg border p-2">
+          <option value="all">Semua</option><option value="missing">Berkas belum lengkap</option><option value="empty">Folder kosong</option><option value="pending_sig">TTD pending</option>
+        </select>
+      </label>
+      <button type="button" className="rounded-lg border p-2" onClick={() => (isFolder ? setExpandedFolderItems : setExpandedZipItems)(Object.fromEntries(visibleItems.map(({ idx }) => [idx, true])))}><ChevronsUpDown className="mr-1 inline h-4 w-4" />Buka semua</button>
+      <button type="button" className="rounded-lg border p-2" onClick={() => (isFolder ? setExpandedFolderItems : setExpandedZipItems)({})}>Tutup semua</button>
+      <button type="button" className="rounded-lg border p-2" onClick={() => exportReport('csv')}><Download className="mr-1 inline h-4 w-4" />CSV</button>
+      <button type="button" className="rounded-lg border p-2" onClick={() => exportReport('json')}>JSON</button>
+      <p className="w-full text-xs text-slate-500" role="status">{visibleItems.length} kategori ditampilkan. Ekspor mencakup seluruh hasil proyek, bukan hanya hasil filter.</p>
+      {!visibleItems.length && <p className="w-full text-slate-500">Tidak ada kategori yang cocok dengan filter.</p>}
+    </div>
+  );
 
   return (
     <main className="min-h-screen bg-[#F8FAF9] text-[#232323] font-sans selection:bg-[#006747]/20 relative overflow-x-hidden">
@@ -570,6 +607,7 @@ export default function Home() {
                         </div>
                       </div>
 
+                      {checklistToolbar}
                       {/* CHECKLIST ITEMS LIST - ACCORDION DETAIL VIEW */}
                       <div>
                         {/* TABLE HEADER BAR */}
@@ -583,7 +621,7 @@ export default function Home() {
                         </div>
 
                         <div className="divide-y divide-slate-100">
-                        {activeProjectData.items.map((item, idx) => {
+                        {visibleItems.map(({ item, idx }) => {
                           const isFound = item.status === "Ditemukan";
                           const hasSig = item.signature_analysis;
                           const sigPending = hasSig && hasSig.status === "PENDING";
@@ -869,6 +907,7 @@ export default function Home() {
                       </div>
 
                       {/* CHECKLIST ITEMS TABLE */}
+                      {checklistToolbar}
                       {/* CHECKLIST ITEMS LIST - ACCORDION DETAIL VIEW */}
                       <div>
                         {/* TABLE HEADER BAR */}
@@ -882,7 +921,7 @@ export default function Home() {
                         </div>
 
                         <div className="divide-y divide-slate-100">
-                        {activeProjectData.items.map((item, idx) => {
+                        {visibleItems.map(({ item, idx }) => {
                           const isFound = item.status === "Ditemukan";
                           const hasSig = item.signature_analysis;
                           const sigPending = hasSig && hasSig.status === "PENDING";
