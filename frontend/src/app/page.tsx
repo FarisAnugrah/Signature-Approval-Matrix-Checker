@@ -263,10 +263,8 @@ export default function Home() {
       }
       formData.append("paths", JSON.stringify(paths));
       formData.append("options", JSON.stringify({ mode: checklistMode, categories: customCategories.split('\n').map(p => p.trim()).filter(Boolean), roots: projectRoots, mapping: folderMapping }));
-      const res = await fetch("http://localhost:8001/verify/folder", { method: "POST", body: formData });
-      const data = await res.json();
-
-      if (!res.ok) throw new Error(data.detail || "Gagal memproses folder");
+      const data = await zipRequest("http://localhost:8001/verify/folder", "Upload folder", { method: "POST", body: formData });
+      if (typeof data.job_id !== "string" || !data.job_id) throw new Error("Upload folder: respons backend tidak berisi ID proses.");
 
       if (data.job_id) {
         let isDone = false;
@@ -274,9 +272,7 @@ export default function Home() {
         while (!isDone) {
           if (Date.now() > deadline) throw new Error('Waktu tunggu habis; proses server mungkin masih berjalan.');
           await new Promise(r => setTimeout(r, 1500));
-          const pollRes = await fetch(`http://localhost:8001/verify/${data.job_id}`);
-          const pollData = await pollRes.json();
-          if (!pollRes.ok) throw new Error(pollData.detail || 'Gagal mengambil hasil folder');
+          const pollData = await zipRequest(`http://localhost:8001/verify/${data.job_id}`, "Pemeriksaan status folder");
 
           if (pollData.status === "completed") {
             setFolderResults(pollData.result);
